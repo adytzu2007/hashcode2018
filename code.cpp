@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <queue>
@@ -24,9 +25,35 @@ struct Ride {
     int d; // distance from start to finish
 };
 
+struct Car;
+
+using CarRide = pair<Car*, Ride*>;
+
+struct CmpByRideStart {
+    int operator() (const CarRide& a, const CarRide& b);
+};
+
 struct Car {
     vector<Ride*> rides;
+    priority_queue<CarRide, vector<CarRide>, CmpByRideStart> ridesByStart{CmpByRideStart()};
     int f; // finish time
+};
+
+int dist(int a, int b, int x, int y) {
+    return (abs(a - x) + abs(b - y));
+}
+
+int CmpByRideStart::operator() (const CarRide& a, const CarRide& b)
+{
+    Car* car = a.first;
+    Ride* rideA = a.second;
+    Ride* rideB = b.second;
+    Ride* currentRide = car->rides[car->rides.size() - 1];
+
+    int d1 = dist(currentRide->x, currentRide->y, rideA->a, rideA->b);
+    int d2 = dist(currentRide->x, currentRide->y, rideB->a, rideB->b);
+
+    return d1 > d2;
 };
 
 Ride rides[10000];
@@ -42,11 +69,8 @@ auto cmpByFinish = [] (const Car* a, const Car* b) {
 };
 priority_queue<Car*, vector<Car*>, decltype(cmpByFinish)> carsByFinish(cmpByFinish);
 
-int dist(int a, int b, int x, int y) {
-    return (abs(a - x) + abs(b - y));
-}
 
-bool addRideToCar(Car* car, Ride* ride)
+bool addRideToCar(Car* car, Ride* ride, bool simulate)
 {
     int a = 0, b = 0;
 
@@ -56,11 +80,16 @@ bool addRideToCar(Car* car, Ride* ride)
         b = r->y;
     }
 
-    car->f = simulationStep + ride->d + dist(a, b, ride->a, ride->b);
-    if (car->f > simulationSteps) {
+    int f = simulationStep + ride->d + dist(a, b, ride->a, ride->b);
+    if (f > simulationSteps) {
         return false;
     }
 
+    if (simulate) {
+        return true;
+    }
+
+    car->f = f;
     car->rides.push_back(ride);
 
     carsByFinish.push(car);
@@ -86,9 +115,7 @@ void solve()
         Ride* ride = ridesByStart.top();
         ridesByStart.pop();
 
-        fprintf(stderr, "%s\n", rideToString(ride).c_str());
-
-        addRideToCar(&cars[i], ride);
+        addRideToCar(&cars[i], ride, false);
     }
 
     while (!carsByFinish.empty()) {
@@ -98,17 +125,39 @@ void solve()
         simulationStep = car->f;
 
         Ride *ride;
-        while (!ridesByStart.empty()) {
-            ride = ridesByStart.top();
+        vector<Ride*> skipped;
+        while (car->ridesByStart.size() < 5 &&
+               !ridesByStart.empty()) {
+            Ride *ride = ridesByStart.top();
             ridesByStart.pop();
 
-            if (addRideToCar(car, ride)) {
-                break;
+            if (!addRideToCar(car, ride, true)) {
+                skipped.push_back(ride);
             } else {
-                ridesByStart.push(ride);
-                break;
+                car->ridesByStart.push(make_pair(car, ride));
             }
         }
+
+        for (Ride* r: skipped) {
+            ridesByStart.push(r);
+        }
+
+        if (car->ridesByStart.empty()) {
+            continue;
+        }
+
+        CarRide carRide = car->ridesByStart.top();
+        car->ridesByStart.pop();
+
+        ride = carRide.second;
+
+        while (!car->ridesByStart.empty()) {
+            CarRide carRide = car->ridesByStart.top();
+            car->ridesByStart.pop();
+            ridesByStart.push(carRide.second);
+        }
+
+        assert(addRideToCar(car, ride, false));
     }
 }
 
@@ -123,8 +172,6 @@ int main(int argc, char *argv[])
               &rides[i].a, &rides[i].b,
               &rides[i].x, &rides[i].y,
               &rides[i].s, &rides[i].f);
-
-        fprintf(stderr, "%s\n", rideToString(&rides[i]).c_str());
 
         rides[i].d = dist(rides[i].a, rides[i].b,
                           rides[i].x, rides[i].y);
