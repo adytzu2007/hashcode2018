@@ -1,5 +1,6 @@
 #!/bin/bash
 
+make
 for test in *.in; do
     in=${test}
     out=${test%.in}.out
