@@ -7,3 +7,5 @@ for test in *.in; do
     echo "Running test ${in} and saving output into ${out}"
     ./code < ${in} > ${out}
 done
+
+wait

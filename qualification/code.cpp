@@ -11,9 +11,10 @@ int rows;
 int cols;
 int vehicles;
 int noRides;
-int bonus;
+int bonusPerRide;
 int simulationSteps;
 int simulationStep;
+long long score;
 
 struct Ride {
     int a; // start row
@@ -36,6 +37,8 @@ struct CmpByRideStart {
 struct Car {
     vector<Ride*> rides;
     priority_queue<CarRide, vector<CarRide>, CmpByRideStart> ridesByStart{CmpByRideStart()};
+    int x;
+    int y;
     int f; // finish time
 };
 
@@ -48,10 +51,9 @@ int CmpByRideStart::operator() (const CarRide& a, const CarRide& b)
     Car* car = a.first;
     Ride* rideA = a.second;
     Ride* rideB = b.second;
-    Ride* currentRide = car->rides[car->rides.size() - 1];
 
-    int d1 = dist(currentRide->x, currentRide->y, rideA->a, rideA->b);
-    int d2 = dist(currentRide->x, currentRide->y, rideB->a, rideB->b);
+    int d1 = rideA->s + dist(car->x, car->y, rideA->a, rideA->b);
+    int d2 = rideB->s + dist(car->x, car->y, rideB->a, rideB->b);
 
     return d1 > d2;
 };
@@ -69,34 +71,6 @@ auto cmpByFinish = [] (const Car* a, const Car* b) {
 };
 priority_queue<Car*, vector<Car*>, decltype(cmpByFinish)> carsByFinish(cmpByFinish);
 
-
-bool addRideToCar(Car* car, Ride* ride, bool simulate)
-{
-    int a = 0, b = 0;
-
-    if (car->rides.size() > 0) {
-        Ride *r = car->rides[car->rides.size() - 1];
-        a = r->x;
-        b = r->y;
-    }
-
-    int f = simulationStep + ride->d + dist(a, b, ride->a, ride->b);
-    if (f > simulationSteps) {
-        return false;
-    }
-
-    if (simulate) {
-        return true;
-    }
-
-    car->f = f;
-    car->rides.push_back(ride);
-
-    carsByFinish.push(car);
-
-    return true;
-}
-
 string rideToString(Ride* ride)
 {
     stringstream s;
@@ -109,13 +83,48 @@ string rideToString(Ride* ride)
     return s.str();
 }
 
+bool addRideToCar(Car* car, Ride* ride, bool simulate)
+{
+    int a = 0, b = 0;
+
+    if (car->rides.size() > 0) {
+        Ride *r = car->rides[car->rides.size() - 1];
+        a = r->x;
+        b = r->y;
+    }
+
+    bool bonus = (simulationStep + dist(a, b, ride->a, ride->b)) <= ride->s;
+    int f = max(simulationStep + dist(a, b, ride->a, ride->b), ride->s) + ride->d;
+
+    if (f >= ride->f) {
+        return false;
+    }
+
+    if (f > simulationSteps) {
+        return false;
+    }
+
+    if (simulate) {
+        return true;
+    }
+
+    score += ride->d;
+    score += bonus ? bonusPerRide : 0;
+
+    car->f = f;
+    car->rides.push_back(ride);
+    car->x = ride->x;
+    car->y = ride->y;
+
+    carsByFinish.push(car);
+
+    return true;
+}
+
 void solve()
 {
     for (int i = 0; i < vehicles; ++i) {
-        Ride* ride = ridesByStart.top();
-        ridesByStart.pop();
-
-        addRideToCar(&cars[i], ride, false);
+        carsByFinish.push(&cars[i]);
     }
 
     while (!carsByFinish.empty()) {
@@ -126,7 +135,7 @@ void solve()
 
         Ride *ride;
         vector<Ride*> skipped;
-        while (car->ridesByStart.size() < 5 &&
+        while (car->ridesByStart.size() < 10000 &&
                !ridesByStart.empty()) {
             Ride *ride = ridesByStart.top();
             ridesByStart.pop();
@@ -165,7 +174,7 @@ int main(int argc, char *argv[])
 {
     scanf("%d %d %d %d %d %d",
           &rows, &cols, &vehicles,
-          &noRides, &bonus, &simulationSteps);
+          &noRides, &bonusPerRide, &simulationSteps);
 
     for (int i = 0; i < noRides; ++i) {
         scanf("%d %d %d %d %d %d",
@@ -180,6 +189,8 @@ int main(int argc, char *argv[])
     }
 
     solve();
+
+    fprintf(stderr, "%lld\n", score);
 
     for (int i = 0; i < vehicles; ++i) {
         printf("%d ", cars[i].rides.size());
